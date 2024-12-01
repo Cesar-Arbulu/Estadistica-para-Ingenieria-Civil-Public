@@ -1,0 +1,163 @@
+#===================================================
+# Paquetes
+#===================================================
+# Cargar los paquetes necesarios, descargándolos si es necesario
+if (!require(lme4)) install.packages("lme4", dependencies = TRUE)
+if (!require(lmerTest)) install.packages("lmerTest", dependencies = TRUE)
+if (!require(dplyr)) install.packages("dplyr", dependencies = TRUE)
+if (!require(ggplot2)) install.packages("ggplot2", dependencies = TRUE)
+if (!requireNamespace("car", quietly = TRUE)) {install.packages("car")}
+library(lme4)
+library(lmerTest)
+library(dplyr)
+library(ggplot2)
+library(car)
+
+#===================================================
+# Datos
+#===================================================
+# Create the dataset
+long_data <- data.frame(
+  Especimen = c(1:60, 1:60, 1:60),
+  biopolimero = rep(c(rep("Xanthan", 20), rep("Guar", 20), rep("Gelan", 20)), 3),
+  Tiempo = rep(c(rep("7 Días", 60), rep("28 Días", 60), rep("90 Días", 60))),
+  AscCap = c(
+    c(0.59, 0.66, 0.75, 0.52, 0.68, 0.58, 0.51, 0.61, 0.62, 0.48, 0.66, 0.71, 0.64, 0.59, 0.64, 0.70, 0.59, 0.63, 0.76, 0.62,
+      0.50, 0.41, 0.28, 0.40, 0.52, 0.53, 0.25, 0.66, 0.44, 0.21, 0.36, 0.46, 0.48, 0.62, 0.32, 0.49, 0.41, 0.31, 0.33, 0.50,
+      0.55, 0.50, 0.57, 0.37, 0.65, 0.58, 0.49, 0.47, 0.64, 0.49, 0.42, 0.51, 0.56, 0.63, 0.36, 0.55, 0.48, 0.42, 0.51, 0.46),
+    c(2.31, 2.30, 2.42, 2.25, 2.49, 2.38, 2.51, 2.59, 2.29, 2.27, 2.43, 2.48, 2.35, 2.36, 2.53, 2.40, 2.39, 2.49, 2.47, 2.40,
+      1.50, 1.52, 1.59, 1.70, 1.56, 1.46, 1.36, 1.50, 1.58, 1.54, 1.47, 1.59, 1.68, 1.51, 1.49, 1.50, 1.44, 1.37, 1.51, 1.46,
+      1.70, 1.70, 1.84, 2.01, 1.80, 2.08, 1.95, 1.90, 1.79, 2.02, 1.81, 1.69, 1.99, 1.87, 1.89, 1.95, 1.92, 1.98, 2.01, 1.85),
+    c(2.83, 3.08, 2.99, 3.08, 2.80, 3.07, 3.01, 3.02, 2.93, 2.98, 3.11, 3.15, 3.14, 3.01, 3.01, 3.24, 3.04, 3.20, 2.93, 3.07,
+      1.98, 1.93, 2.08, 1.99, 2.05, 1.83, 2.11, 2.07, 2.14, 2.16, 2.14, 2.17, 2.03, 2.04, 1.96, 2.00, 1.93, 1.93, 2.38, 2.06,
+      2.58, 2.36, 2.45, 2.45, 2.57, 2.47, 2.40, 2.64, 2.59, 2.43, 2.28, 2.65, 2.47, 2.29, 2.43, 2.60, 2.59, 2.58, 2.51, 2.42)
+  ),
+  id = c(1:60, 1:60, 1:60)
+)
+
+print(long_data)
+
+#===================================================
+# Caja y bigote, incluyendo atípicos si los hubiera
+#===================================================
+# Crear boxplot para los datos incluyendo los valores atípicos
+dev.new()
+boxplot_with_outliers <- ggplot(long_data, aes(x = Tiempo, y = AscCap, fill = biopolimero)) + 
+  geom_boxplot() + 
+  labs(title = "Gráfico de caja de la ascención capilar (AscCap) en los especímenes de ladrillos versus el tiempo según tipo de biopolímero (con atípicos)", 
+       x = "Tiempo", 
+       y = "AscCap") + 
+  scale_fill_grey(start = 0.3, end = 0.7) +
+  theme_bw() + 
+  theme(legend.position = "bottom")
+
+print(boxplot_with_outliers)
+
+#===================================================
+# Detección de valores atípicos
+#===================================================
+# Aplicación de la detección de valores atípicos mediante el método del intervalo intercuartílico (IQR)
+outlier_detection <- long_data %>%
+  group_by(Tiempo, biopolimero) %>%
+  summarise(Q1 = quantile(AscCap, 0.25),
+            Q3 = quantile(AscCap, 0.75)) %>%
+  mutate(IQR = Q3 - Q1,
+         Lower_Fence = Q1 - 1.5 * IQR,
+         Upper_Fence = Q3 + 1.5 * IQR)
+
+# Identify outliers
+long_data <- long_data %>%
+  left_join(outlier_detection, by = c("Tiempo", "biopolimero")) %>%
+  mutate(Outlier = ifelse(AscCap < Lower_Fence | AscCap > Upper_Fence, TRUE, FALSE))
+
+# Exclude outliers from subsequent computations
+long_data_filtered <- long_data %>% filter(Outlier == FALSE)
+
+# Display outliers
+print(long_data %>% filter(Outlier == TRUE))
+
+#===================================================
+# Caja y bigote, sin incluir los valores atípicos
+#===================================================
+# Crear boxplot para los datos sin los valores atípicos
+dev.new()
+boxplot_without_outliers <- ggplot(long_data_filtered, aes(x = Tiempo, y = AscCap, fill = biopolimero)) + 
+  geom_boxplot() + 
+  labs(title = "Gráfico de caja de la ascención capilar (AscCap) en los especímenes de ladrillos versus el tiempo según tipo de biopolímero (sin atípicos)", 
+       x = "Tiempo", 
+       y = "AscCap") + 
+  scale_fill_grey(start = 0.3, end = 0.7) +
+  theme_bw() + 
+  theme(legend.position = "bottom")
+
+print(boxplot_without_outliers)
+
+#===================================================
+# Verificación de normalidad
+#===================================================
+# Aplique la prueba de Shapiro-Wilk por separado para cada combinación de tiempo de curado y tipo de biopolímero
+shapiro_results <- long_data_filtered %>%
+  group_by(Tiempo, biopolimero) %>%
+  summarise(Shapiro_W = shapiro.test(AscCap)$statistic,
+            p_value = shapiro.test(AscCap)$p.value)
+# Display the Shapiro-Wilk test results
+print(shapiro_results)
+
+#===================================================
+# Verificación de homogeneidad de la covarianza
+#===================================================
+# Variance check (Levene's test)
+levene_test <- leveneTest(AscCap ~ Tiempo * biopolimero, data = long_data_filtered)
+print(levene_test)
+
+#===================================================
+# Prueba de Esfericidad (Mauchly's Test)
+#===================================================
+if (!require(afex)) install.packages("afex", dependencies = TRUE)
+library(afex)
+
+# Fit a repeated measures model using afex::aov_car
+anova_model <- aov_car(AscCap ~ biopolimero * Tiempo + Error(Especimen/Tiempo), data = long_data_filtered, return = "Anova")
+
+# Run Mauchly's Test for Sphericity
+mauchly_test <- summary(anova_model, multivariate = TRUE)$sphericity.tests
+print(mauchly_test)
+
+# Extract p-value from Mauchly's Test
+mauchly_p_value <- mauchly_test[1, "p-value"]
+
+#===================================================
+# Aplicar ajustes de Greenhouse-Geisser o Huynh-Feldt si es necesario
+#===================================================
+if (mauchly_p_value < 0.05) {
+  # Greenhouse-Geisser correction
+  anova_gg <- anova(anova_model, idata = data.frame(Tiempo = factor(c("7 Días", "28 Días", "90 Días"))), 
+                    idesign = ~Tiempo, type = "III", test = "Greenhouse-Geisser")
+  print(anova_gg)
+  
+  # Huynh-Feldt correction
+  anova_hf <- anova(anova_model, idata = data.frame(Tiempo = factor(c("7 Días", "28 Días", "90 Días"))), 
+                    idesign = ~Tiempo, type = "III", test = "Huynh-Feldt")
+  print(anova_hf)
+} else {
+  print("Sphericity assumption is not violated. No adjustment is needed.")
+}
+
+#===================================================
+# Repeated Measures ANOVA (Type I)
+#===================================================
+anova_type_i <- aov(AscCap ~ biopolimero * Tiempo + Error(Especimen/Tiempo), data = long_data_filtered)
+summary(anova_type_i)
+
+#===================================================
+# Repeated Measures ANOVA (Type III)
+#===================================================
+if (!require(car)) install.packages("car", dependencies = TRUE)
+library(car)
+
+# Fit a linear mixed-effects model using lme4::lmer
+lmer_model <- lmer(AscCap ~ biopolimero * Tiempo + (1|Especimen) + (1|Tiempo), data = long_data_filtered)
+
+# Perform Type III ANOVA on the lmer model
+anova_type_iii <- Anova(lmer_model, type = "III")
+print(anova_type_iii)
